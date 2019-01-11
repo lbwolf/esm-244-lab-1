@@ -1,0 +1,123 @@
+---
+title: "lab_1_in_class"
+author: "Laura Wolf"
+date: "1/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Objectives:
+- basic review (data wrangling)
+- intro to spatial data in R with sf
+- intro to shiny apps
+
+1. Attach packages
+
+```{r load_packages}
+
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(tmap)
+
+```
+
+2. Review: reading, exploring, wrangling and visualizing data
+
+a. Read in the data
+```{r load_data}
+
+wine <- read_csv("wine_data.csv")
+
+```
+
+b. Wrangling 
+```{r wrangling}
+
+wine_new <- wine %>% #"and then". never overwrite original data
+  select(country, province, winery, region_1, points, price) %>% #select=columns. can be used for ordering
+  rename(state = province) %>% # = sets something equal. == looks for a match
+  filter(state == "California" | state == "Oregon" | state == "Washington") %>%  #filter is for rows. | means "or". selects only the states california, oregon, and washington.
+  mutate(ppd = points/price) %>% #mutate can change a column or add a new one. adds a column for points per dollar
+  arrange(-ppd) #arrange stores values in decreasing ppd order
+
+```
+
+c. Use group_by() and summarize() to find summary statistics by group
+```{r summary_stats}
+
+wine_summary <- wine_new %>% 
+  group_by(state) %>% #create groups that I won't see, but I know exist to group data by states. used to calculate things based on groups. can have multiple levels of groupings.
+  summarize(
+    mean_ppd = mean(ppd, na.rm = TRUE), #create a data table that shows mean ppd in the groups we created
+    max_ppd = max(ppd, na.rm = TRUE) #adds max ppd to table
+  )
+  
+
+```
+
+d. A few gg-graphics
+```{r histograms}
+
+wine_hists <- ggplot(wine_new, aes(x = ppd)) +
+  geom_histogram(aes(fill = state)) + #need the aes to know to specify color by state. fill = bar color
+  facet_wrap(~state, scales = "free") #puts each on its own plot, default is to have the same scale
+
+wine_hists
+
+```
+
+new graph: scatterplot graph of price vs. points, with color determined by state, adding a linear model trendline on top of it
+
+```{r scatterplot}
+
+wine_points <- ggplot(wine_new, aes(x = price, y = points)) +
+  geom_point(aes(color = state), alpha = 0.5) + #points use "color" to set color of points
+  geom_smooth(color = "black", method = "lm", se = FALSE) + #adds black trendline without standard error
+  scale_color_manual(values = c("royalblue", "mediumorchid1", "orange")) +
+  facet_wrap(~state) + #puts each on its own plot
+  theme_light() #changes the display theme
+
+wine_points
+
+```
+
+2. California counties (spatial data) using sf
+
+```{r load_spatial_data}
+
+ca_counties <- st_read(dsn = ".", layer = "CA_Counties_TIGER2016")
+
+ca_land <- ca_counties %>% 
+  select(NAME, ALAND) #keeps geometry!!! "sticky geometry"
+
+ca_pop_inc <- read_csv("ca_pop_inc.csv") %>% #load ca_pop_inc data
+  rename(NAME = COUNTY) #renames the county column to "NAME" to match the column "NAME" in ca_land. values in the cells match.
+
+ca_df <- full_join(ca_land, ca_pop_inc) %>% #safest best because it keeps everything
+  select(NAME, MedFamilyIncome)
+
+#plot(ca_counties)
+
+```
+
+d. Use geom_sf to make a map in ggplot
+
+```{r map}
+
+ca_income <- ggplot(ca_df) +
+  geom_sf(aes(fill = MedFamilyIncome))
+
+ca_income
+
+ca_df_transform <- st_transform(ca_df, crs = 4326)
+
+leaflet(ca_df_transform) %>% 
+  addTiles() %>% 
+  addPolygons()
+
+```
+
